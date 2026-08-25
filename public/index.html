@@ -72,8 +72,11 @@
   button.primary{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:15px;cursor:pointer}
   button.ghost{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer}
   button.primary:active{transform:translateY(1px)}
-  .btn-sm{padding:6px 10px;font-size:13px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  .btn-sm{padding:6px 10px;font-size:13px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;transition:background .15s}
   .btn-sm.danger{color:var(--red);border-color:#f0c9bf}
+  .btn-sm.danger:hover{background:#fbeae6}
+  button:disabled{opacity:.55;cursor:default}
+  button.primary:disabled,button.ghost:disabled,button.btn-sm:disabled{opacity:.55;cursor:default}
   .list{margin-top:16px;display:flex;flex-direction:column;gap:10px}
   .item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff}
   .item .grow{flex:1;min-width:0}
@@ -121,9 +124,10 @@
     <div class="topbar-tools">
       <span class="sync" id="sync"><span class="dot" id="syncDot"></span><span id="syncText">连接中…</span></span>
       <span class="sync-code">
-        <label>同步码</label>
-        <input id="syncCode" placeholder="匿名" title="相同同步码 = 同一份数据，可用于跨设备" />
+        <label title="相同同步码 = 同一份数据，可跨设备共享">同步码</label>
+        <input id="syncCode" placeholder="未设置 · 本地匿名" title="相同同步码 = 同一份数据，可跨设备共享" />
         <button class="ghost" id="applySync">应用</button>
+        <button class="ghost" id="copySync" title="复制当前同步码">复制</button>
       </span>
       <button class="ghost" id="exportBtn">导出备份</button>
       <button class="ghost" id="importBtn">导入恢复</button>
@@ -169,6 +173,9 @@
         <div class="row" style="margin-top:14px">
           <label class="field" style="flex:0 0 150px">按月预算 ¥<input type="number" id="budget" placeholder="设置月度预算" /></label>
           <button class="ghost" id="saveBudget">保存预算</button>
+          <label class="field" style="flex:0 0 140px">月份
+            <select id="finMonth"></select>
+          </label>
           <label class="field" style="flex:0 0 130px">筛选分类
             <select id="filterCat"><option value="">全部</option></select>
           </label>
@@ -296,6 +303,7 @@ function setSyncCode(code){
   const v = (code||'').trim();
   if(!v){ showBanner('同步码不能为空', true); return; }
   localStorage.setItem('lifehub_uid', v);
+  document.getElementById('syncCode').value=v;
   CACHE = {}; showBanner('已切换数据空间，正在加载…');
   refresh();
 }
@@ -334,6 +342,39 @@ function showBanner(msg, isErr, retryFn){
   window.__retry = retryFn||null;
   b.style.display='block';
   if(!isErr) setTimeout(()=>b.style.display='none',2500);
+}
+
+// 按钮忙碌态：禁用并提示「处理中」，避免重复点击、给出即时反馈
+async function withBusy(btn, fn){
+  if(!btn) return fn();
+  const orig=btn.textContent;
+  btn.disabled=true; btn.textContent='处理中…';
+  try{ await fn(); }
+  finally{ btn.disabled=false; btn.textContent=orig; }
+}
+
+// 轻量二次确认：第一次点变「确认?」，3 秒内再点才真正执行，防误删
+function confirmDel(btn, fn){
+  if(btn.dataset.confirm==='1'){ fn(); return; }
+  const orig=btn.textContent;
+  btn.dataset.confirm='1'; btn.textContent='确认?'; btn.classList.add('danger');
+  setTimeout(()=>{ btn.textContent=orig; btn.classList.remove('danger'); delete btn.dataset.confirm; }, 3000);
+}
+
+// 回车提交：在输入框回车即触发指定动作
+function bindEnter(inputId, fn){
+  document.getElementById(inputId).addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); fn(); }
+  });
+}
+
+// 月份选项：最近 12 个月（含本月）
+function populateMonths(){
+  const sel=document.getElementById('finMonth'); if(!sel) return;
+  const now=new Date(); const opts=[];
+  for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(), now.getMonth()-i, 1); opts.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')); }
+  const cur=today.slice(0,7);
+  sel.innerHTML=opts.map(m=>`<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
 }
 
 const fmt = n => '¥'+ (Number(n)||0).toLocaleString('zh-CN',{maximumFractionDigits:2});
@@ -391,19 +432,23 @@ async function addFinance(){
   const category=document.getElementById('f_cat').value.trim()||'其他';
   const amount=document.getElementById('f_amount').value;
   if(!amount){ showBanner('请填写金额'); return; }
-  try{
-    await api('finance','POST',null,{date,type,category,amount:Number(amount),note:document.getElementById('f_note').value.trim()});
-    showBanner('已保存 · '+type+' '+fmt(amount));
-    document.getElementById('f_amount').value='';document.getElementById('f_note').value='';
-    await refresh();
-  }catch(e){ showBanner('保存失败：'+e.message,true, refresh); }
+  await withBusy(document.getElementById('addFinance'), async()=>{
+    try{
+      await api('finance','POST',null,{date,type,category,amount:Number(amount),note:document.getElementById('f_note').value.trim()});
+      showBanner('已保存 · '+type+' '+fmt(amount));
+      document.getElementById('f_amount').value='';document.getElementById('f_note').value='';
+      await refresh();
+    }catch(e){ showBanner('保存失败：'+e.message,true, refresh); }
+  });
 }
 function renderFinance(){
   const filter=document.getElementById('filterCat').value;
+  const month=document.getElementById('finMonth').value||today.slice(0,7);
   let list=[...CACHE.finance].sort((a,b)=>(a.date<b.date?1:-1));
+  list=list.filter(f=>(f.date||'').slice(0,7)===month);
   if(filter) list=list.filter(f=>f.category===filter);
   const box=document.getElementById('financeList');
-  if(!list.length) box.innerHTML='<div class="empty">还没有账目，记一笔吧</div>';
+  if(!list.length) box.innerHTML='<div class="empty">该月还没有账目</div>';
   else box.innerHTML=list.map(f=>{
     const red=f.type==='支出';
     return `<div class="item">
@@ -413,11 +458,10 @@ function renderFinance(){
       <button class="btn-sm danger" data-id="${f.id}">删</button>
     </div>`;
   }).join('');
-  box.querySelectorAll('.btn-sm').forEach(b=>b.onclick=async()=>{ await api('finance','DELETE',b.dataset.id); await refresh(); });
+  box.querySelectorAll('.btn-sm').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('finance','DELETE',b.dataset.id); await refresh(); }));
 
-  // 分类饼图（本月支出）
-  const month=today.slice(0,7);
-  const exp=list.filter(f=>f.type==='支出'&&(f.date||'').slice(0,7)===month);
+  // 分类饼图（所选月份支出）
+  const exp=list.filter(f=>f.type==='支出');
   const byCat={}; exp.forEach(f=>byCat[f.category]=(byCat[f.category]||0)+Number(f.amount||0));
   drawPie(byCat);
 }
@@ -446,11 +490,13 @@ function drawPie(byCat){
 async function addHabit(){
   const name=document.getElementById('h_name').value.trim();
   if(!name){ showBanner('请填写习惯名称'); return; }
-  try{
-    await api('habits','POST',null,{name,type:document.getElementById('h_type').value,target:document.getElementById('h_target').value,unit:document.getElementById('h_unit').value||'',records:{}});
-    document.getElementById('h_name').value='';document.getElementById('h_target').value='';document.getElementById('h_unit').value='';
-    showBanner('已新增习惯'); await refresh();
-  }catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  await withBusy(document.getElementById('addHabit'), async()=>{
+    try{
+      await api('habits','POST',null,{name,type:document.getElementById('h_type').value,target:document.getElementById('h_target').value,unit:document.getElementById('h_unit').value||'',records:{}});
+      document.getElementById('h_name').value='';document.getElementById('h_target').value='';document.getElementById('h_unit').value='';
+      showBanner('已新增习惯'); await refresh();
+    }catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  });
 }
 function renderHabits(){
   const box=document.getElementById('habitList');
@@ -478,7 +524,7 @@ function renderHabits(){
     else { const v=document.getElementById('hv_'+h.id).value; if(v===''){showBanner('请输入数值');return;} rec[today]=Number(v); }
     await api('habits','PUT',h.id,{records:rec}); await refresh();
   });
-  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ await api('habits','DELETE',b.dataset.del); await refresh(); });
+  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('habits','DELETE',b.dataset.del); await refresh(); }));
   renderHeat();
 }
 function renderHeat(){
@@ -501,10 +547,12 @@ async function addWeight(){
   const date=document.getElementById('w_date').value||today;
   const w=document.getElementById('w_weight').value, f=document.getElementById('w_fat').value;
   if(!w){ showBanner('请填写体重'); return; }
-  try{ await api('fitness','POST',null,{date,weight:Number(w),bodyFat:f?Number(f):null});
-    document.getElementById('w_weight').value='';document.getElementById('w_fat').value='';
-    showBanner('已记录体重'); await refresh();
-  }catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  await withBusy(document.getElementById('addWeight'), async()=>{
+    try{ await api('fitness','POST',null,{date,weight:Number(w),bodyFat:f?Number(f):null});
+      document.getElementById('w_weight').value='';document.getElementById('w_fat').value='';
+      showBanner('已记录体重'); await refresh();
+    }catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  });
 }
 async function savePlan(){
   const height=document.getElementById('p_height').value, target=document.getElementById('p_target').value;
@@ -578,9 +626,11 @@ function drawLine(line){
 async function addSched(){
   const title=document.getElementById('s_title').value.trim();
   if(!title){ showBanner('请填写事项'); return; }
-  try{ await api('schedule','POST',  null,{title,date:document.getElementById('s_date').value||today, priority:document.getElementById('s_pri').value, done:false});
-    document.getElementById('s_title').value=''; await refresh(); showBanner('已添加'); }
-  catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  await withBusy(document.getElementById('addSched'), async()=>{
+    try{ await api('schedule','POST',null,{title,date:document.getElementById('s_date').value||today, priority:document.getElementById('s_pri').value, done:false});
+      document.getElementById('s_title').value=''; await refresh(); showBanner('已添加'); }
+    catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  });
 }
 function renderSchedule(){
   const list=[...CACHE.schedule].sort((a,b)=>(a.date<b.date?-1:1));
@@ -598,16 +648,18 @@ function renderSchedule(){
     </div>`;
   }).join('');
   box.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{ const s=CACHE.schedule.find(x=>x.id===b.dataset.id); await api('schedule','PUT',s.id,{done:!s.done}); await refresh(); });
-  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ await api('schedule','DELETE',b.dataset.del); await refresh(); });
+  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('schedule','DELETE',b.dataset.del); await refresh(); }));
 }
 
 // ---------- 待买 ----------
 async function addBuy(){
   const name=document.getElementById('b_name').value.trim();
   if(!name){ showBanner('请填写物品'); return; }
-  try{ await api('shopping','POST',null,{name, qty:Number(document.getElementById('b_qty').value||1), done:false});
-    document.getElementById('b_name').value=''; await refresh(); showBanner('已加入清单'); }
-  catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  await withBusy(document.getElementById('addBuy'), async()=>{
+    try{ await api('shopping','POST',null,{name, qty:Number(document.getElementById('b_qty').value|| 1), done:false});
+      document.getElementById('b_name').value=''; await refresh(); showBanner('已加入清单'); }
+    catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  });
 }
 function renderShopping(){
   const list=CACHE.shopping;
@@ -621,7 +673,7 @@ function renderShopping(){
       <button class="btn-sm danger" data-del="${b.id}">删</button>
     </div>`).join('');
   box.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{ const i=CACHE.shopping.find(x=>x.id===b.dataset.id); await api('shopping','PUT',i.id,{done:!i.done}); await refresh(); });
-  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ await api('shopping','DELETE',b.dataset.del); await refresh(); });
+  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('shopping','DELETE',b.dataset.del); await refresh(); }));
 }
 
 // ---------- 书影音 ----------
@@ -636,10 +688,12 @@ async function addMedia(){
     // 压缩到 800 宽
     cover=await compress(cover);
   }
-  try{ await api('media','POST',null,{kind:document.getElementById('m_kind').value,title,status:document.getElementById('m_status').value,rating:Number(document.getElementById('m_rating').value),review:document.getElementById('m_review').value.trim(),cover});
-    document.getElementById('m_title').value='';document.getElementById('m_review').value='';document.getElementById('m_cover').value='';
-    showBanner('已收藏'); await refresh(); }
-  catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  await withBusy(document.getElementById('addMedia'), async()=>{
+    try{ await api('media','POST',null,{kind:document.getElementById('m_kind').value,title,status:document.getElementById('m_status').value,rating:Number(document.getElementById('m_rating').value),review:document.getElementById('m_review').value.trim(),cover});
+      document.getElementById('m_title').value='';document.getElementById('m_review').value='';document.getElementById('m_cover').value='';
+      showBanner('已收藏'); await refresh(); }
+    catch(e){ showBanner('保存失败：'+e.message,true,refresh); }
+  });
 }
 function compress(dataUrl){
   return new Promise(res=>{
@@ -661,8 +715,7 @@ function renderMedia(){
   document.getElementById('mediaYear').textContent='已看 '+yCount+' 部（看过）';
   if(mediaView==='wall'){
     wall.style.display=''; ls.style.display='none';
-    wall.innerHTML=list.length?'': '<div class="empty">还没有收藏</div>';
-    wall.innerHTML=list.map(m=>`
+    if(list.length) wall.innerHTML=list.map(m=>`
       <div style="display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff">
         ${m.cover?`<img class="cover" src="${m.cover}">`:`<div class="cover" style="display:flex;align-items:center;justify-content:center;color:#bbb;font-size:12px">无封面</div>`}
         <div class="grow"><div style="font-weight:600">${esc(m.title)} <span class="pill">${m.kind}</span> <span class="pill">${m.status}</span></div>
@@ -681,7 +734,7 @@ function renderMedia(){
         <button class="btn-sm danger" data-del="${m.id}">删</button>
       </div>`).join('');
   }
-  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ await api('media','DELETE',b.dataset.del); await refresh(); });
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('media','DELETE',b.dataset.del); await refresh(); }));
 }
 
 // ---------- 预算 ----------
@@ -730,28 +783,51 @@ async function refresh(){
   }catch(e){ setSync('err','离线 · 读取失败'); showBanner('加载失败：'+e.message,true,refresh); }
 }
 
-// 导航
+// 导航（记住上次所在模块）
 document.getElementById('nav').querySelectorAll('.nav-item').forEach(n=>{
   n.onclick=()=>{
     document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
     n.classList.add('active'); document.getElementById('sec-'+n.dataset.sec).classList.add('active');
+    localStorage.setItem('lifehub_sec', n.dataset.sec);
   };
 });
+(function restoreSec(){
+  const cur=localStorage.getItem('lifehub_sec');
+  if(cur){ const nav=document.querySelector('.nav-item[data-sec="'+cur+'"]'); if(nav){ nav.click(); } }
+})();
+
 ['addFinance','addHabit','addWeight','addSched','addBuy','addMedia'].forEach(id=>document.getElementById(id).onclick=window[id]);
-document.getElementById('saveBudget').onclick=saveBudget;
-document.getElementById('savePlan').onclick=savePlan;
+document.getElementById('saveBudget').onclick=()=>withBusy(document.getElementById('saveBudget'), saveBudget);
+document.getElementById('savePlan').onclick=()=>withBusy(document.getElementById('savePlan'), savePlan);
 document.getElementById('exportBtn').onclick=exportData;
 document.getElementById('importBtn').onclick=()=>document.getElementById('importFile').click();
 document.getElementById('importFile').onchange=e=>{ if(e.target.files[0]) importData(e.target.files[0]); };
 document.getElementById('applySync').onclick=()=>setSyncCode(document.getElementById('syncCode').value);
-document.getElementById('syncCode').value=getUid(); // 显示当前同步码（匿名）
+document.getElementById('syncCode').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); setSyncCode(document.getElementById('syncCode').value); } });
+document.getElementById('copySync').onclick=()=>{
+  const code=getUid();
+  navigator.clipboard?.writeText(code).then(()=>showBanner('同步码已复制：'+code)).catch(()=>showBanner('复制失败，同步码：'+code));
+}; // 显示并复制当前同步码，便于跨设备粘贴
+document.getElementById('syncCode').value=getUid();
 document.getElementById('viewToggle').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   mediaView=b.dataset.v; document.querySelectorAll('#viewToggle button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); renderMedia();
 });
 
+// 回车快捷提交（减少点击）
+bindEnter('f_amount', addFinance);
+bindEnter('f_note', addFinance);
+bindEnter('h_name', addHabit);
+bindEnter('w_weight', addWeight);
+bindEnter('s_title', addSched);
+bindEnter('b_name', addBuy);
+bindEnter('m_title', addMedia);
+// 记账月份切换 → 重渲染该模块
+document.getElementById('finMonth').addEventListener('change', renderFinance);
+
 // 默认日期
 ['f_date','w_date','s_date'].forEach(id=>document.getElementById(id).value=today);
+populateMonths();
 
 (async()=>{ await refresh(); })();
 </script>
