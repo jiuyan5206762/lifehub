@@ -34,7 +34,7 @@
   /* 今日概览 */
   .overview{background:linear-gradient(135deg,#fff, #fbf9f6);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:22px}
   .ov-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-  .ov-head h2{margin:,font-size:18px}
+  .ov-head h2{margin:0;font-size:18px}
   .ov-head .sub{color:var(--muted);font-size:13px}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:16px}
   .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
@@ -197,7 +197,7 @@
           <button class="primary" id="addWeight" style="align-self:flex-end">记录</button>
         </div>
         <div class="row" style="margin-top:14px">
-          <label class="field" style="flex:0 ,0 120px">身高(cm)<input type="number" id="p_height" placeholder="如 170" /></label>
+          <label class="field" style="flex:0 0 120px">身高(cm)<input type="number" id="p_height" placeholder="如 170" /></label>
           <label class="field" style="flex:0 0 130px">目标体重(kg)<input type="number" id="p_target" step="0.1" /></label>
           <button class="ghost" id="savePlan">保存规划</button>
         </div>
@@ -233,7 +233,7 @@
           <label class="field" style="flex:0 0 90px">数量<input type="number" id="b_qty" value="1" /></label>
           <button class="primary" id="addBuy" style="align-self:flex-end">加入</button>
         </div>
-        <div class (list)" id="buyList"></div>
+        <div class="list" id="buyList"></div>
       </section>
 
       <!-- 书影音收藏 -->
@@ -311,8 +311,9 @@ function showBanner(msg, isErr, retryFn){
 
 const fmt = n => '¥'+ (Number(n)||0).toLocaleString('zh-CN',{maximumFractionDigits:2});
 const esc = s => String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const todayStr = () => new Date().toISOString().slice(0,10);
-const today = todayStr();
+// 用本地时区计算日期，避免凌晨（UTC 未跨日）时「今天」算成前一天
+function localDate(d){ return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+const today = localDate(new Date());
 
 // ---------- 今日概览 ----------
 function renderOverview(){
@@ -347,7 +348,7 @@ function renderOverview(){
   });
   const box=document.getElementById('todos');
   if(!todos.length) box.innerHTML='<div class="empty">暂无待处理，今天很轻松 🍃</div>';
-  else box.innerHTML = todos.map(t=>`<div class="todo ${t.overdue?'overdue':''}"><span class="tag">${t.overdue?'逾期':t.label}</span><span class="grow">${t.text}</span><button class="mini-btn" data-coll="${t.coll}" data-id="${t.id}">完成</button></div>`).join('');
+  else box.innerHTML = todos.map(t=>`<div class="todo ${t.overdue?'overdue':''}"><span class="tag">${t.overdue?'逾期':'待办'}</span><span class="grow">${t.text}</span><button class="mini-btn" data-coll="${t.coll}" data-id="${t.id}">完成</button></div>`).join('');
   box.querySelectorAll('.mini-btn').forEach(b=>b.onclick=async()=>{
     const coll=b.dataset.coll, id=b.dataset.id;
     if(coll==='schedule') await api('schedule','PUT',id,{done:true});
@@ -458,7 +459,7 @@ function renderHeat(){
   const grid=document.getElementById('heat');
   let html='';
   for(let i=days-1;i>=0;i--){
-    const d=new Date(todayD); d.setDate(d.getDate()-i); const ds=d.toISOString().slice(0,10);
+    const d=new Date(todayD); d.setDate(d.getDate()-i); const ds=localDate(d);
     const doneCount=CACHE.habits.filter(h=>{(h.records||{})[ds]}).length;
     const total=CACHE.habits.length||1;
     const ratio=doneCount/total;
@@ -678,7 +679,11 @@ async function importData(file){
     for(const k of Object.keys(data)){
       if(!Array.isArray(CACHE[k]) && CACHE[k]!==undefined) continue;
       const arr=data[k]||[];
-      for(const item of arr){ await api(k,'POST',null,item).catch(()=>{}); }
+      for(const item of arr){
+        // 已存在同 id 则更新，避免重复（settings 的固定 id 如 budget/plan）
+        if(item.id && CACHE[k].find(x=>x.id===item.id)) await api(k,'PUT',item.id,item).catch(()=>{});
+        else await api(k,'POST',null,item).catch(()=>{});
+      }
     }
     showBanner('已导入（逐条写入线上）'); await refresh();
   }catch(e){ showBanner('导入失败：'+e.message,true); }
