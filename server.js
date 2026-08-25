@@ -78,7 +78,7 @@ const server = http.createServer((req, res) => {
 
         if (req.method === 'POST') {
           const obj = JSON.parse(body || '{}');
-          obj.id = uid();
+          if (!obj.id) obj.id = uid(); // 保留前端传入的固定 id（如 'budget'），不强制覆盖
           obj.createdAt = Date.now();
           store[coll].push(obj);
           writeJSON(store);

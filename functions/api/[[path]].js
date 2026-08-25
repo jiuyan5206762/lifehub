@@ -48,7 +48,7 @@ export async function onRequest(context) {
 
     if (request.method === 'POST') {
       const obj = await request.json().catch(() => ({}));
-      obj.id = uid();
+      if (!obj.id) obj.id = uid(); // 保留前端传入的固定 id（如 'budget'），不强制覆盖
       obj.createdAt = Date.now();
       store[coll].push(obj);
       await writeStore(store);
