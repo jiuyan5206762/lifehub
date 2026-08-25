@@ -1,0 +1,21 @@
+{
+  "name": "生活工作台 · Life Desk",
+  "short_name": "生活工作台",
+  "description": "记账理财 · 习惯健康 · 减脂健身 · 日程统筹 · 待买清单 · 书影音收藏，数据在线存储跨设备同步。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f3f0",
+  "theme_color": "#f4f3f0",
+  "lang": "zh-CN",
+  "categories": ["lifestyle", "productivity", "health"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
