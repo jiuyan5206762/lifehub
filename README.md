@@ -32,11 +32,14 @@ node server.js
 
 ## 部署到 Cloudflare Pages（从 GitHub 构建）
 
-1. 在 Cloudflare 控制台创建一个 **KV 命名空间**（例如 `lifehub-db`）。
-2. 把 `wrangler.toml` 里的 `id` 改为该命名空间 ID（或在 Pages 项目「设置 → 函数 → KV 绑定」绑定名为 `LIFE_DB` 的变量）。
-3. 将本仓库连接到 Cloudflare Pages（Connect to Git → 选择本仓库）。
-4. 构建设置：**构建命令留空**，**输出目录填 `public`**。
-5. 部署完成后即可获得公网域名，数据存在于 Cloudflare KV，多设备实时同步。
+1. 将本仓库连接到 Cloudflare Pages（Connect to Git → 选择本仓库）。
+2. 构建设置：**构建命令留空**，**输出目录填 `public`**。
+3. 在 Cloudflare 控制台新建一个 **KV 命名空间**（例如 `lifehub-db`），复制它的命名空间 ID（32 位十六进制）。
+4. 进入 Pages 项目 **设置 → 函数 → KV 命名空间绑定**，添加一个绑定：变量名填 `LIFE_DB`，命名空间选刚创建的那个。
+5. 保存后**重新部署一次**（Deployments → 对应记录 Retry / 或 Push 一次触发）。
+6. 部署成功后获得公网域名，数据存在于 Cloudflare KV，多设备实时同步。
+
+> 重要：`wrangler.toml` 中**不要保留 `REPLACE_WITH_YOUR_KV_NAMESPACE_ID` 占位符**——Cloudflare 会在「发布 Function」阶段校验该 ID，占位符会导致 `Invalid KV namespace ID` 报错。KV 绑定统一在控制台 Dashboard 完成，无需在文件里写 ID。
 
 > 说明：Cloudflare Pages Functions + KV 可以零服务器运维地承载这个应用；KV 为最终一致性，对个人量级完全够用。若后续需要更强查询能力，可平滑迁移到 D1（SQLite）。
 
