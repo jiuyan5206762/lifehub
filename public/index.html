@@ -885,8 +885,22 @@ function renderSchedule(){
       <button class="btn-sm danger" data-del="${s.id}">删</button>
     </div>`;
   }).join('');
-  box.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{ const s=CACHE.schedule.find(x=>x.id===b.dataset.id); await api('schedule','PUT',s.id,{done:!s.done}); await refresh(); });
-  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('schedule','DELETE',b.dataset.del); await refresh(); }));
+  box.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{ const s=CACHE.schedule.find(x=>x.id===b.dataset.id); if(!s) return; await api('schedule','PUT',s.id,{done:!s.done}); await refresh(); });
+  box.querySelectorAll('[data-del]').forEach(b=>{
+    b.onclick=()=>confirmDel(b, async()=>{
+      if(b.dataset.busy==='1') return;            // 防重复删除（网络慢时连点）
+      b.dataset.busy='1';
+      const orig=b.textContent; b.disabled=true; b.textContent='删除中…';
+      try{
+        await api('schedule','DELETE',b.dataset.del);  // 按唯一 id 从数据源移除
+        await refresh();                            // 删除后从后端重新拉取，界面与数据源强一致
+        showBanner('日程已删除');
+      }catch(e){
+        b.disabled=false; b.textContent=orig; delete b.dataset.busy;  // 失败恢复可重试
+        showBanner('删除失败：'+e.message, true, refresh);
+      }
+    });
+  });
 }
 
 // ---------- 待买 ----------
