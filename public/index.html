@@ -698,7 +698,15 @@ function renderFinance(){
       <button class="btn-sm danger" data-id="${f.id}">删</button>
     </div>`;
   }).join('');
-  box.querySelectorAll('.btn-sm').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('finance','DELETE',b.dataset.id); await refresh(); }));
+  // ⚡ 事件委托：删除（绑在容器上，不随 DOM 重建丢失）
+  if(!box._delBound){
+    box.addEventListener('click', e=>{
+      const btn = e.target.closest('.btn-sm.danger');
+      if(!btn || !btn.dataset.id) return;
+      confirmDel(btn, async()=>{ try{ await api('finance','DELETE',btn.dataset.id); await refresh(); } catch(er){ showBanner('删除失败：'+er.message, true); } });
+    }, {passive:true});
+    box._delBound=true;
+  }
 
   // 分类饼图（所选月份支出）
   const exp=list.filter(f=>f.type==='支出');
@@ -764,7 +772,15 @@ function renderHabits(){
     else { const v=document.getElementById('hv_'+h.id).value; if(v===''){showBanner('请输入数值');return;} rec[today]=Number(v); }
     await api('habits','PUT',h.id,{records:rec}); await refresh();
   });
-  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('habits','DELETE',b.dataset.del); await refresh(); }));
+  // ⚡ 事件委托：删除习惯
+  if(!box._delBound){
+    box.addEventListener('click', e=>{
+      const btn = e.target.closest('[data-del]');
+      if(!btn) return;
+      confirmDel(btn, async()=>{ try{ await api('habits','DELETE',btn.dataset.del); await refresh(); } catch(er){ showBanner('删除失败：'+er.message, true); } });
+    }, {passive:true});
+    box._delBound=true;
+  }
   renderHeat();
 }
 function renderHeat(){
@@ -885,22 +901,44 @@ function renderSchedule(){
       <button class="btn-sm danger" data-del="${s.id}">删</button>
     </div>`;
   }).join('');
-  box.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{ const s=CACHE.schedule.find(x=>x.id===b.dataset.id); if(!s) return; await api('schedule','PUT',s.id,{done:!s.done}); await refresh(); });
-  box.querySelectorAll('[data-del]').forEach(b=>{
-    b.onclick=()=>confirmDel(b, async()=>{
-      if(b.dataset.busy==='1') return;            // 防重复删除（网络慢时连点）
-      b.dataset.busy='1';
-      const orig=b.textContent; b.disabled=true; b.textContent='删除中…';
+  // ⚡ 事件委托：删除 & 完成切换（绑在容器上，不随 DOM 重建丢失）
+  // —— 完成切换 ——
+  box.addEventListener('click', e=>{
+    const btn = e.target.closest('[data-id]');
+    if(!btn) return;
+    const s=CACHE.schedule.find(x=>x.id===btn.dataset.id);
+    if(!s) return;
+    (async()=>{
+      try{ await api('schedule','PUT',s.id,{done:!s.done}); await refresh(); }
+      catch(er){ showBanner('操作失败：'+er.message, true); }
+    })();
+  }, {passive:true});
+  // —— 删除（二次确认 + 忙碌锁 + 错误恢复） ——
+  box.addEventListener('click', e=>{
+    const btn = e.target.closest('[data-del]');
+    if(!btn) return;
+    // confirmDel 二次确认流程
+    if(btn.dataset.confirm!=='1'){
+      const orig=btn.textContent;
+      btn.dataset.confirm='1'; btn.textContent='确认?'; btn.classList.add('danger');
+      setTimeout(()=>{ if(btn.isConnected){ btn.textContent=orig; btn.classList.remove('danger'); delete btn.dataset.confirm; }}, 3000);
+      return;
+    }
+    // 确认后执行删除
+    (async()=>{
+      if(btn.dataset.busy==='1') return;
+      btn.dataset.busy='1';
+      const orig=btn.textContent; btn.disabled=true; btn.textContent='删除中…';
       try{
-        await api('schedule','DELETE',b.dataset.del);  // 按唯一 id 从数据源移除
-        await refresh();                            // 删除后从后端重新拉取，界面与数据源强一致
+        await api('schedule','DELETE',btn.dataset.del);
+        await refresh();
         showBanner('日程已删除');
-      }catch(e){
-        b.disabled=false; b.textContent=orig; delete b.dataset.busy;  // 失败恢复可重试
-        showBanner('删除失败：'+e.message, true, refresh);
+      }catch(err){
+        if(btn.isConnected){ btn.disabled=false; btn.textContent=orig; delete btn.dataset.busy; }
+        showBanner('删除失败：'+err.message, true, refresh);
       }
-    });
-  });
+    })();
+  }, {passive:true});
 }
 
 // ---------- 待买 ----------
@@ -924,8 +962,16 @@ function renderShopping(){
       <button class="btn-sm" data-id="${b.id}">${b.done?'撤销':'已买'}</button>
       <button class="btn-sm danger" data-del="${b.id}">删</button>
     </div>`).join('');
-  box.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{ const i=CACHE.shopping.find(x=>x.id===b.dataset.id); await api('shopping','PUT',i.id, {done:!i.done}); await refresh(); });
-  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('shopping','DELETE',b.dataset.del); await refresh(); }));
+  // ⚡ 事件委托：已买切换 + 删除
+  if(!box._delBound){
+    box.addEventListener('click', e=>{
+      const btn = e.target.closest('[data-id]');
+      if(btn){ (async()=>{ try{ const i=CACHE.shopping.find(x=>x.id===btn.dataset.id); await api('shopping','PUT',i.id,{done:!i.done}); await refresh(); } catch(er){ showBanner('操作失败：'+er.message, true); } })(); return; }
+      const db = e.target.closest('[data-del]');
+      if(db) confirmDel(db, async()=>{ try{ await api('shopping','DELETE',db.dataset.del); await refresh(); } catch(er){ showBanner('删除失败：'+er.message, true); } });
+    }, {passive:true});
+    box._delBound=true;
+  }
 }
 
 // ---------- 书影音 ----------
@@ -984,7 +1030,16 @@ function renderMedia(){
         <button class="btn-sm danger" data-del="${m.id}">删</button>
       </div>`).join(''):'<div class="empty">还没有收藏</div>';
   }
-  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmDel(b, async()=>{ await api('media','DELETE',b.dataset.del); await refresh(); }));
+  // ⚡ 事件委托：删除收藏（wall + list 两个容器都绑）
+  [wall, ls].forEach(container=>{
+    if(!container || container._delBound) return;
+    container.addEventListener('click', e=>{
+      const btn = e.target.closest('[data-del]');
+      if(!btn) return;
+      confirmDel(btn, async()=>{ try{ await api('media','DELETE',btn.dataset.del); await refresh(); } catch(er){ showBanner('删除失败：'+er.message, true); } });
+    }, {passive:true});
+    container._delBound=true;
+  });
 }
 
 // ---------- 预算 ----------
