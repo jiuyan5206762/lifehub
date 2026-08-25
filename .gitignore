@@ -1,0 +1,6 @@
+# 本地开发运行时数据（部署到 Cloudflare 时使用 KV，不使用此文件）
+data/
+
+# 依赖与缓存
+node_modules/
+.workbuddy/

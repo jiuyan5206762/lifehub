@@ -1,0 +1,10 @@
+name = "lifehub"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "public"
+
+# Cloudflare KV 存储绑定：用于持久化所有模块数据（非浏览器本地）。
+# 在 Cloudflare 控制台创建一个 KV 命名空间，把它的 ID 填到下面的 id 处；
+# 或在控制台 Pages 项目「设置 → 函数 → KV 绑定」里绑定名为 LIFE_DB 的变量。
+[[kv_namespaces]]
+binding = "LIFE_DB"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
