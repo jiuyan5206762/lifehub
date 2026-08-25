@@ -6,33 +6,40 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const DB_PATH = path.join(ROOT, 'data', 'store.json');
+const DATA_DIR = path.join(ROOT, 'data');
 const PORT = process.env.PORT || 8787;
 
 const COLLECTIONS = ['finance', 'habits', 'fitness', 'fitness_plan', 'schedule', 'shopping', 'media', 'settings'];
 
-function ensureStore() {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(DB_PATH)) {
+function dbPath(uid) {
+  // 每个用户独立文件，避免数据互通；过滤非法字符防路径穿越
+  const safe = String(uid).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+  return path.join(DATA_DIR, 'store_' + safe + '.json');
+}
+
+function ensureStore(uid) {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  const p = dbPath(uid);
+  if (!fs.existsSync(p)) {
     const init = {};
     COLLECTIONS.forEach(c => (init[c] = []));
-    writeJSON(init);
+    writeJSON(init, uid);
   }
 }
 
-function readStore() {
+function readStore(uid) {
   try {
-    return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+    return JSON.parse(fs.readFileSync(dbPath(uid), 'utf8'));
   } catch (e) {
     return {};
   }
 }
 
-function writeJSON(obj) {
-  const tmp = DB_PATH + '.tmp';
+function writeJSON(obj, uid) {
+  const p = dbPath(uid);
+  const tmp = p + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), 'utf8');
-  fs.renameSync(tmp, DB_PATH); // 原子替换，避免损坏
+  fs.renameSync(tmp, p); // 原子替换，避免损坏
 }
 
 function uid() {
@@ -56,11 +63,18 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ ok: false, error: '未知集合' }));
       return;
     }
+    const reqUid = url.searchParams.get('uid');
+    if (!reqUid) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: '缺少 uid（同步码），请先设置同步码' }));
+      return;
+    }
+    ensureStore(reqUid);
     let body = '';
     req.on('data', c => (body += c));
     req.on('end', () => {
       try {
-        const store = readStore();
+        const store = readStore(reqUid);
         if (!Array.isArray(store[coll])) store[coll] = [];
 
         if (req.method === 'GET') {
@@ -81,7 +95,7 @@ const server = http.createServer((req, res) => {
           if (!obj.id) obj.id = uid(); // 保留前端传入的固定 id（如 'budget'），不强制覆盖
           obj.createdAt = Date.now();
           store[coll].push(obj);
-          writeJSON(store);
+          writeJSON(store, reqUid);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, data: obj }));
           return;
@@ -98,7 +112,7 @@ const server = http.createServer((req, res) => {
           }
           store[coll][  idx] = Object.assign({}, store[coll][idx], obj, { id });
           store[coll][idx].updatedAt = Date.now();
-          writeJSON(store);
+          writeJSON(store, reqUid);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, data: store[coll][idx] }));
           return;
@@ -108,7 +122,7 @@ const server = http.createServer((req, res) => {
           const id = url.searchParams.get('id');
           const before = store[coll].length;
           store[coll] = store[coll].filter(x => x.id !== id);
-          writeJSON(store);
+          writeJSON(store, reqUid);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, removed: before - store[coll].length }));
           return;

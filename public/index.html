@@ -30,6 +30,9 @@
   .dot{width:8px;height:8px;border-radius:50%;background:var(--teal)}
   .dot.off{background:#ccc}
   .dot.err{background:var(--red)}
+  .sync-code{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff}
+  .sync-code label{color:var(--muted)}
+  .sync-code input{border:none;outline:none;background:transparent;font-size:13px;width:88px;color:var(--ink)}
 
   /* 今日概览 */
   .overview{background:linear-gradient(135deg,#fff, #fbf9f6);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:22px}
@@ -117,6 +120,11 @@
     <div class="brand"><h1>生活工作台</h1><span>Life Desk · 数据在线存储 · 跨设备同步</span></div>
     <div class="topbar-tools">
       <span class="sync" id="sync"><span class="dot" id="syncDot"></span><span id="syncText">连接中…</span></span>
+      <span class="sync-code">
+        <label>同步码</label>
+        <input id="syncCode" placeholder="匿名" title="相同同步码 = 同一份数据，可用于跨设备" />
+        <button class="ghost" id="applySync">应用</button>
+      </span>
       <button class="ghost" id="exportBtn">导出备份</button>
       <button class="ghost" id="importBtn">导入恢复</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" />
@@ -275,9 +283,28 @@
 const API = '/api/';
 let CACHE = { finance:[], habits:[], fitness:[], fitness_plan:[], schedule:[], shopping:[], media:[], settings:[] };
 
-async function api(coll, method='GET', id=null, body=null){
-  const qs = id ? ('?id='+encodeURIComponent(id)) : '';
-  const res = await fetch(API+coll+qs, {
+// 用户身份：默认匿名随机 id（数据隔离）；用户可在「同步码」里改成自定义串，跨设备共享同一份数据
+function getUid(){
+  let u = localStorage.getItem('lifehub_uid');
+  if(!u){
+    u = 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+    localStorage.setItem('lifehub_uid', u);
+  }
+  return u;
+}
+function setSyncCode(code){
+  const v = (code||'').trim();
+  if(!v){ showBanner('同步码不能为空', true); return; }
+  localStorage.setItem('lifehub_uid', v);
+  CACHE = {}; showBanner('已切换数据空间，正在加载…');
+  refresh();
+}
+async function api(coll, method='GET',  id=null, body=null){
+  const params = new URLSearchParams();
+  if(id) params.set('id', id);
+  params.set('uid', getUid()); // 每个用户独立数据空间
+  const qs = params.toString();
+  const res = await fetch(API+coll+'?'+qs, {
     method, headers:{'Content-Type':'application/json'},
     body: body? JSON.stringify(body):undefined
   });
@@ -717,6 +744,8 @@ document.getElementById('savePlan').onclick=savePlan;
 document.getElementById('exportBtn').onclick=exportData;
 document.getElementById('importBtn').onclick=()=>document.getElementById('importFile').click();
 document.getElementById('importFile').onchange=e=>{ if(e.target.files[0]) importData(e.target.files[0]); };
+document.getElementById('applySync').onclick=()=>setSyncCode(document.getElementById('syncCode').value);
+document.getElementById('syncCode').value=getUid(); // 显示当前同步码（匿名）
 document.getElementById('viewToggle').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   mediaView=b.dataset.v; document.querySelectorAll('#viewToggle button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); renderMedia();
 });

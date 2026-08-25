@@ -12,6 +12,12 @@ export async function onRequest(context) {
     return Response.json({ ok: false, error: '未知集合' }, { status: 400 });
   }
 
+  // 用户隔离：每个用户独立数据空间（同步码 / uid）
+  const reqUid = url.searchParams.get('uid');
+  if (!reqUid) {
+    return Response.json({ ok: false, error: '缺少 uid（同步码），请先设置同步码' }, { status: 400 });
+  }
+
   // 防御：KV 未绑定时返回明确提示（而非抛 "Cannot read properties of undefined"）
   if (!env.LIFE_DB) {
     return Response.json({
@@ -20,7 +26,7 @@ export async function onRequest(context) {
     }, { status: 503 });
   }
 
-  const STORE_KEY = 'store';
+  const STORE_KEY = 'store:' + reqUid;
   async function readStore() {
     const raw = await env.LIFE_DB.get(STORE_KEY);
     if (!raw) return {};
