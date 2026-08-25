@@ -265,12 +265,22 @@ svg{display:block;max-width:100%}
 @media(min-width:769px){
   .brand-text .brand-sub{display:block}
   .sync-pill{font-size:13px;padding:7px 14px}
-  .stats{grid-template-columns:repeat(3,minmax(130px,1fr));gap:14px}
-  .wrap{padding:24px 20px 32px}
-  .overview{padding:24px}
+  /* 统计卡片：6 列一行横排 */
+  .stats{grid-template-columns:repeat(6,1fr);gap:12px}
+  .wrap{max-width:1100px;padding:24px 24px 36px}
+  .overview{padding:24px 24px}
   .bottom-nav{display:none!important}
   nav.rail{display:flex}
   .row{gap:10px}
+  /* 覆盖移动端 !important，恢复表单横排 */
+  .field{min-width:0!important;flex:1 1 0!important}
+  button.primary{width:auto!important;justify-content:center}
+  /* fin-grid 在 PC 也用弹性横排 */
+  .fin-grid{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+  /* PC 端顶部栏：同步面板常驻展开 */
+  .sync-panel{display:block!important;position:static;border-bottom:none;background:transparent;
+    box-shadow:none;padding:0;margin-top:0;animation:none}
+  .topbar{padding:10px 20px;padding-top:calc(10px + var(--safe-t))}
 }
 
 /* ========== 移动端核心适配 ========== */
