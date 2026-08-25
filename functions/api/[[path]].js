@@ -12,6 +12,14 @@ export async function onRequest(context) {
     return Response.json({ ok: false, error: '未知集合' }, { status: 400 });
   }
 
+  // 防御：KV 未绑定时返回明确提示（而非抛 "Cannot read properties of undefined"）
+  if (!env.LIFE_DB) {
+    return Response.json({
+      ok: false,
+      error: 'KV 未绑定：请在 Cloudflare 控制台 → Pages 项目 → 设置 → 函数 → KV 命名空间绑定 中添加变量名为 LIFE_DB 的绑定。'
+    }, { status: 503 });
+  }
+
   const STORE_KEY = 'store';
   async function readStore() {
     const raw = await env.LIFE_DB.get(STORE_KEY);
@@ -47,7 +55,7 @@ export async function onRequest(context) {
       return Response.json({ ok: true, data: obj });
     }
 
-    if (  request.method === 'PUT') {
+    if (request.method === 'PUT') {
       const obj = await request.json().catch(() => ({}));
       const id = url.searchParams.get('id') || obj.id;
       const idx = store[coll].findIndex(x => x.id === id);
@@ -66,7 +74,7 @@ export async function onRequest(context) {
       return Response.json({ ok: true, removed: before - store[coll].length });
     }
 
-    return Response.json({ ok: false,  error: '方法不支持' }, { status: 405 });
+    return Response.json({ ok: false, error: '方法不支持' }, { status: 405 });
   } catch (e) {
     return Response.json({ ok: false, error: e.message }, { status: 500 });
   }
