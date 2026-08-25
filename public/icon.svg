@@ -6,16 +6,15 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <!-- 6 module tiles: 3 cols x 2 rows -->
   <g fill="#ffffff">
-    <circle cx="170" cy="200" r="34" opacity="0.95"/>
-    <circle cx="256" cy="200" r="34" opacity="0.95"/>
-    <circle cx="342" cy="200" r="34" opacity="0.95"/>
-    <circle cx="170" cy="312" r="34" opacity="0.95"/>
-    <circle cx="256" cy="312" r="34" opacity="0.95"/>
-    <circle cx="342" cy="312" r="34" opacity="0.95"/>
+    <rect x="88" y="148" width="96" height="96" rx="22"/>
+    <rect x="208" y="148" width="96" height="96" rx="22"/>
+    <rect x="328" y="148" width="96" height="96" rx="22"/>
+    <rect x="88" y="268" width="96" height="96" rx="22"/>
+    <rect x="208" y="268" width="96" height="96" rx="22"/>
   </g>
-  <g fill="#ffffff" opacity="0.55">
-    <circle cx="256" cy="312" r="60"/>
-  </g>
-  <path d="M196 398 h120 a22 22 0 0 1 0 44 h-120 a22 22 0 0 1 0-44 z" fill="#ffffff" opacity="0.85"/>
+  <!-- highlighted active tile with check (habit done) -->
+  <rect x="328" y="268" width="96" height="96" rx="22" fill="#ffffff" opacity="0.22"/>
+  <path d="M352 318 l18 18 30 -34" stroke="#ffffff" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
